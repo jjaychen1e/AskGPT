@@ -3,6 +3,38 @@ local CONFIGURATION = {
     model = "gpt-4o-mini",
     base_url = "https://api.openai.com/v1/chat/completions",
     additional_parameters = {},
+    strip_thinking_tags = false,  -- Remove <think>...</think> reasoning content from responses
+    features = {
+        translate_to = "Chinese"  -- Optional: adds a "Translate" button
+    },
+    -- Custom buttons appear in the highlight menu alongside "Ask ChatGPT"
+    -- Each button can have its own label, model (optional), and prompt
+    -- Use {text} as a placeholder for the highlighted text
+    -- Use {input} as a placeholder for user input (requires allow_input = true)
+    -- Set hide_highlighted_text = true to hide "Highlighted text: ..." in results
+    -- Set hide_user_prompt = true to hide the first "User: ..." message in results
+    custom_buttons = {
+        {
+            label = "Summarize",
+            model = "gpt-4o-mini",  -- Optional: override default model
+            prompt = "Summarize the following text concisely: {text}",
+            hide_highlighted_text = true,  -- Hide "Highlighted text: ..." in results
+            hide_user_prompt = true        -- Hide first "User: ..." message in results
+        },
+        {
+            label = "Explain",
+            prompt = "Explain the following text in simple terms: {text}"
+        },
+        {
+            label = "Define Terms",
+            prompt = "Define any technical terms or jargon in: {text}"
+        },
+        {
+            label = "Ask About",
+            allow_input = true,  -- Shows input dialog before executing
+            prompt = "About this text: {text}\n\nUser's question: {input}"
+        }
+    }
 }
 
 return CONFIGURATION

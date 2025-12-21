@@ -23,11 +23,22 @@ local http = require("socket.http")
 local ltn12 = require("ltn12")
 local json = require("json")
 
-local function queryChatGPT(message_history)
+-- Helper function to strip <think>...</think> tags from response
+local function stripThinkingTags(content)
+  -- Remove <think>...</think> blocks (handles multiline content)
+  local result = content:gsub("<think>.-</think>", "")
+  -- Trim leading/trailing whitespace
+  result = result:gsub("^%s+", ""):gsub("%s+$", "")
+  return result
+end
+
+local function queryChatGPT(message_history, options)
+  options = options or {}
   -- Use api_key from CONFIGURATION or fallback to the api_key module
   local api_key_value = CONFIGURATION and CONFIGURATION.api_key or api_key
   local api_url = CONFIGURATION and CONFIGURATION.base_url or "https://api.openai.com/v1/chat/completions"
-  local model = CONFIGURATION and CONFIGURATION.model or "gpt-4o-mini"
+  -- Use model from options if provided, otherwise fall back to CONFIGURATION or default
+  local model = options.model or (CONFIGURATION and CONFIGURATION.model) or "gpt-4o-mini"
 
   -- Determine whether to use http or https
   local request_library = api_url:match("^https://") and https or http
@@ -69,7 +80,14 @@ local function queryChatGPT(message_history)
   end
 
   local response = json.decode(table.concat(responseBody))
-  return response.choices[1].message.content
+  local content = response.choices[1].message.content
+
+  -- Strip thinking tags if configured
+  if CONFIGURATION and CONFIGURATION.strip_thinking_tags then
+    content = stripThinkingTags(content)
+  end
+
+  return content
 end
 
 return queryChatGPT
