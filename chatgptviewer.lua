@@ -456,17 +456,13 @@ function ChatGPTViewer:handleTextSelection(text, hold_duration, start_idx, end_i
 end
 
 function ChatGPTViewer:update(new_text)
-  UIManager:close(self)
-  local updated_viewer = ChatGPTViewer:new {
-    title = self.title,
-    text = new_text,
-    width = self.width,
-    height = self.height,
-    buttons_table = self.buttons_table,
-    onAskQuestion = self.onAskQuestion,
-  }
-  updated_viewer.scroll_text_w:scrollToBottom()
-  UIManager:show(updated_viewer)
+  self.text = new_text
+  -- Update the ScrollTextWidget's internal TextBoxWidget
+  self.scroll_text_w.text_widget:setText(new_text)
+  -- Trigger partial UI refresh
+  UIManager:setDirty(self, function()
+    return "partial", self.frame.dimen
+  end)
 end
 
 return ChatGPTViewer

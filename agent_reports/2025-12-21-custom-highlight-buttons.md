@@ -13,6 +13,9 @@ Added support for user-defined custom buttons in the highlight dialog. Each butt
 - Added support for per-request model override via `options.model`
 - Added `stripThinkingTags` helper function to remove `<think>...</think>` content
 - Added support for `strip_thinking_tags` configuration option
+- Added `queryChatGPTStream` function for streaming responses with SSE parsing
+- Added `isStreamingEnabled` helper to check configuration
+- Module now exports a table: `{ query, stream, isStreamingEnabled }`
 
 ### 2. `dialogs.lua`
 - Added new `showCustomPromptResult(ui, highlightedText, buttonConfig)` function
@@ -83,7 +86,55 @@ Per-button option `hide_highlighted_text = true` removes the "Highlighted text: 
 
 Per-button option `hide_user_prompt = true` removes the first "User: ..." message from results, showing only the AI response.
 
+### Streaming Responses
+
+```lua
+streaming = true,             -- Enable streaming responses (default: true)
+streaming_chunk_size = 500,   -- Characters between UI updates (default: 500)
+```
+
+When enabled, responses are displayed incrementally as they arrive from the API:
+- Shows "Generating response..." immediately
+- Uses non-blocking sockets with UIManager polling for async updates
+- Updates the viewer every 500 characters (configurable)
+- Displays a cursor indicator (▌) during generation
+- Optimized for e-ink displays with chunked updates to avoid excessive screen refreshes
+
 ## Data Flow
+
+### Async Streaming Response Flow
+
+```mermaid
+sequenceDiagram
+    participant Dialog
+    participant UIManager
+    participant Socket
+    participant API
+    
+    Dialog->>Dialog: Show Viewer with "Generating..."
+    Dialog->>Socket: Create non-blocking TCP connection
+    Dialog->>Socket: SSL handshake (if HTTPS)
+    Dialog->>Socket: Send HTTP POST request
+    Dialog->>UIManager: Schedule poll (100ms)
+    
+    loop Polling
+        UIManager->>Socket: Try read (non-blocking)
+        alt Data available
+            Socket-->>Dialog: SSE chunk
+            Dialog->>Dialog: Parse & accumulate content
+            alt Content >= 500 chars since last update
+                Dialog->>Dialog: Update Viewer
+            end
+        end
+        alt Connection open
+            Dialog->>UIManager: Schedule next poll
+        else Connection closed or DONE
+            Dialog->>Dialog: Final Viewer update
+        end
+    end
+```
+
+## Button Click Data Flow
 
 ```mermaid
 flowchart TD

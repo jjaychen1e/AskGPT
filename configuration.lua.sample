@@ -4,6 +4,8 @@ local CONFIGURATION = {
     base_url = "https://api.openai.com/v1/chat/completions",
     additional_parameters = {},
     strip_thinking_tags = false,  -- Remove <think>...</think> reasoning content from responses
+    streaming = true,             -- Enable streaming responses (default: true)
+    streaming_chunk_size = 500,   -- Characters between UI updates during streaming (default: 500)
     features = {
         translate_to = "Chinese"  -- Optional: adds a "Translate" button
     },
