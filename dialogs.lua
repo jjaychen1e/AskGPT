@@ -61,24 +61,12 @@ local function showCustomPromptResult(ui, highlightedText, buttonConfig, userInp
     options.model = buttonConfig.model
   end
 
-  local function handleNewQuestion(chatgpt_viewer, question)
-    table.insert(message_history, {
-      role = "user",
-      content = question
-    })
-
-    local answer = queryChatGPT(message_history, options)
-
-    table.insert(message_history, {
-      role = "assistant",
-      content = answer
-    })
-
+  -- Helper to build full conversation result text
+  local function buildFullResultText()
     local result_text = ""
     if not buttonConfig.hide_highlighted_text then
       result_text = _("Highlighted text: ") .. "\"" .. highlightedText .. "\"\n\n"
     end
-    -- Start from index 3 if hiding first user prompt, else 2
     local start_idx = buttonConfig.hide_user_prompt and 3 or 2
     for i = start_idx, #message_history do
       if message_history[i].role == "user" then
@@ -87,8 +75,75 @@ local function showCustomPromptResult(ui, highlightedText, buttonConfig, userInp
         result_text = result_text .. _("ChatGPT: ") .. message_history[i].content .. "\n\n"
       end
     end
+    return result_text
+  end
 
-    chatgpt_viewer:update(result_text)
+  -- Helper to build result text with streaming partial content
+  local function buildStreamingResultText(partial_content)
+    local result_text = ""
+    if not buttonConfig.hide_highlighted_text then
+      result_text = _("Highlighted text: ") .. "\"" .. highlightedText .. "\"\n\n"
+    end
+    local start_idx = buttonConfig.hide_user_prompt and 3 or 2
+    for i = start_idx, #message_history do
+      if message_history[i].role == "user" then
+        result_text = result_text .. _("User: ") .. message_history[i].content .. "\n\n"
+      else
+        result_text = result_text .. _("ChatGPT: ") .. message_history[i].content .. "\n\n"
+      end
+    end
+    result_text = result_text .. _("ChatGPT: ") .. partial_content .. "\n\n"
+    return result_text
+  end
+
+  local function handleNewQuestion(chatgpt_viewer, question)
+    table.insert(message_history, {
+      role = "user",
+      content = question
+    })
+
+    if isStreamingEnabled() then
+      -- Show generating indicator
+      chatgpt_viewer:update(buildStreamingResultText(_("Generating...") .. " ▌"))
+
+      local streamState = queryChatGPTStreamAsync(message_history, options,
+        -- onChunk callback
+        function(partial_content)
+          chatgpt_viewer:update(buildStreamingResultText(partial_content .. " ▌"))
+        end,
+        -- onComplete callback
+        function(final_content, err)
+          if err then
+            chatgpt_viewer:update(buildStreamingResultText(_("Error: ") .. tostring(err)))
+            return
+          end
+          table.insert(message_history, {
+            role = "assistant",
+            content = final_content
+          })
+          chatgpt_viewer:update(buildFullResultText())
+        end
+      )
+
+      if streamState then
+        local function doPoll()
+          if streamState.poll() then
+            UIManager:scheduleIn(0.1, doPoll)
+          end
+        end
+        UIManager:scheduleIn(0.1, doPoll)
+      end
+    else
+      -- Non-streaming fallback
+      local answer = queryChatGPT(message_history, options)
+
+      table.insert(message_history, {
+        role = "assistant",
+        content = answer
+      })
+
+      chatgpt_viewer:update(buildFullResultText())
+    end
   end
 
   -- Helper to build result text for custom prompts
@@ -256,22 +311,68 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
     content = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly. Answer as concisely as possible. You may use simple markdown formatting like bold, italic, bullet points, and code blocks, but avoid complex formatting such as tables."
   }}
 
+  -- Helper to build streaming result text with partial content
+  local function buildStreamingResultTextForDialog(partial_content)
+    local result_text = _("Highlighted text: ") .. "\"" .. highlightedText .. "\"\n\n"
+    for i = 3, #message_history do
+      if message_history[i].role == "user" then
+        result_text = result_text .. _("User: ") .. message_history[i].content .. "\n\n"
+      else
+        result_text = result_text .. _("ChatGPT: ") .. message_history[i].content .. "\n\n"
+      end
+    end
+    result_text = result_text .. _("ChatGPT: ") .. partial_content .. "\n\n"
+    return result_text
+  end
+
   local function handleNewQuestion(chatgpt_viewer, question)
     table.insert(message_history, {
       role = "user",
       content = question
     })
 
-    local answer = queryChatGPT(message_history)
+    if isStreamingEnabled() then
+      -- Show generating indicator
+      chatgpt_viewer:update(buildStreamingResultTextForDialog(_("Generating...") .. " ▌"))
 
-    table.insert(message_history, {
-      role = "assistant",
-      content = answer
-    })
+      local streamState = queryChatGPTStreamAsync(message_history, {},
+        -- onChunk callback
+        function(partial_content)
+          chatgpt_viewer:update(buildStreamingResultTextForDialog(partial_content .. " ▌"))
+        end,
+        -- onComplete callback
+        function(final_content, err)
+          if err then
+            chatgpt_viewer:update(buildStreamingResultTextForDialog(_("Error: ") .. tostring(err)))
+            return
+          end
+          table.insert(message_history, {
+            role = "assistant",
+            content = final_content
+          })
+          chatgpt_viewer:update(createResultText(highlightedText, message_history))
+        end
+      )
 
-    local result_text = createResultText(highlightedText, message_history)
+      if streamState then
+        local function doPoll()
+          if streamState.poll() then
+            UIManager:scheduleIn(0.1, doPoll)
+          end
+        end
+        UIManager:scheduleIn(0.1, doPoll)
+      end
+    else
+      -- Non-streaming fallback
+      local answer = queryChatGPT(message_history)
 
-    chatgpt_viewer:update(result_text)
+      table.insert(message_history, {
+        role = "assistant",
+        content = answer
+      })
+
+      chatgpt_viewer:update(createResultText(highlightedText, message_history))
+    end
   end
 
   buttons = {
