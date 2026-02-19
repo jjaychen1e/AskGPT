@@ -66,6 +66,7 @@ local ChatGPTViewer = InputContainer:extend {
   find_centered_lines_count = 5, -- line with find results to be not far from the center
 
   onAskQuestion = nil,
+  session = nil,
 }
 
 function ChatGPTViewer:init()

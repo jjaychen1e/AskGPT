@@ -8,6 +8,7 @@ local GPT = require("gpt_query")
 local queryChatGPT = GPT.query
 local queryChatGPTStreamAsync = GPT.streamAsync
 local isStreamingEnabled = GPT.isStreamingEnabled
+local ChatHistory = require("chat_history")
 
 local CONFIGURATION = nil
 local buttons, input_dialog
@@ -19,10 +20,22 @@ else
   print("configuration.lua not found, skipping...")
 end
 
+local function getBookInfo(ui)
+  local props = ui.document:getProps()
+  local title = props.title
+  if not title or title == "" then
+    local filepath = ui.document.file or ""
+    title = filepath:match("([^/]+)%.[^%.]+$") or _("Unknown Title")
+  end
+  local author = props.authors
+  if not author or author == "" then
+    author = _("Unknown Author")
+  end
+  return title, author, ui.document.file
+end
+
 local function showCustomPromptResult(ui, highlightedText, buttonConfig, userInput)
-  local title, author =
-    ui.document:getProps().title or _("Unknown Title"),
-    ui.document:getProps().authors or _("Unknown Author")
+  local title, author, doc_file = getBookInfo(ui)
 
   -- Check if original prompt contains {text} placeholder
   local hasTextPlaceholder = buttonConfig.prompt:find("{text}")
@@ -54,6 +67,15 @@ local function showCustomPromptResult(ui, highlightedText, buttonConfig, userInp
       role = "user",
       content = contextMessage
     }
+  }
+
+  local session = {
+    message_history = message_history,
+    highlighted_text = highlightedText,
+    book_title = title,
+    book_authors = author,
+    doc_file = doc_file,
+    button_label = buttonConfig.label or "Custom",
   }
 
   local options = {}
@@ -121,6 +143,8 @@ local function showCustomPromptResult(ui, highlightedText, buttonConfig, userInp
             role = "assistant",
             content = final_content
           })
+          session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+          ChatHistory.save(session)
           chatgpt_viewer:update(buildFullResultText())
         end
       )
@@ -142,6 +166,8 @@ local function showCustomPromptResult(ui, highlightedText, buttonConfig, userInp
         content = answer
       })
 
+      session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+      ChatHistory.save(session)
       chatgpt_viewer:update(buildFullResultText())
     end
   end
@@ -187,6 +213,8 @@ local function showCustomPromptResult(ui, highlightedText, buttonConfig, userInp
             role = "assistant",
             content = final_content
           })
+          session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+          ChatHistory.save(session)
           local result_text = buildResultText(final_content)
           chatgpt_viewer:update(result_text)
         end
@@ -218,6 +246,9 @@ local function showCustomPromptResult(ui, highlightedText, buttonConfig, userInp
         role = "assistant",
         content = answer
       })
+
+      session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+      ChatHistory.save(session)
 
       local result_text = buildResultText(answer)
 
@@ -303,13 +334,20 @@ local function showLoadingDialog()
 end
 
 local function showChatGPTDialog(ui, highlightedText, message_history)
-  local title, author =
-    ui.document:getProps().title or _("Unknown Title"),
-    ui.document:getProps().authors or _("Unknown Author")
+  local title, author, doc_file = getBookInfo(ui)
   local message_history = message_history or {{
     role = "system",
     content = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly. Answer as concisely as possible. You may use simple markdown formatting like bold, italic, bullet points, and code blocks, but avoid complex formatting such as tables."
   }}
+
+  local session = {
+    message_history = message_history,
+    highlighted_text = highlightedText,
+    book_title = title,
+    book_authors = author,
+    doc_file = doc_file,
+    button_label = "Ask ChatGPT",
+  }
 
   -- Helper to build streaming result text with partial content
   local function buildStreamingResultTextForDialog(partial_content)
@@ -350,6 +388,8 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
             role = "assistant",
             content = final_content
           })
+          session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+          ChatHistory.save(session)
           chatgpt_viewer:update(createResultText(highlightedText, message_history))
         end
       )
@@ -371,6 +411,8 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
         content = answer
       })
 
+      session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+      ChatHistory.save(session)
       chatgpt_viewer:update(createResultText(highlightedText, message_history))
     end
   end
@@ -437,6 +479,8 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
                   content = final_content
                 }
                 table.insert(message_history, answer_message)
+                session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+                ChatHistory.save(session)
                 local result_text = createResultText(highlightedText, message_history)
                 chatgpt_viewer:update(result_text)
               end
@@ -463,6 +507,9 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
               content = answer
             }
             table.insert(message_history, answer_message)
+
+            session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+            ChatHistory.save(session)
 
             local result_text = createResultText(highlightedText, message_history)
 
@@ -527,6 +574,8 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
                   role = "assistant",
                   content = final_content
                 })
+                session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+                ChatHistory.save(session)
                 local result_text = createResultText(highlightedText, message_history)
                 chatgpt_viewer:update(result_text)
               end
@@ -553,6 +602,9 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
               content = translated_text
             })
 
+            session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+            ChatHistory.save(session)
+
             local result_text = createResultText(highlightedText, message_history)
             local chatgpt_viewer = ChatGPTViewer:new {
               title = _("Translation"),
@@ -576,7 +628,86 @@ local function showChatGPTDialog(ui, highlightedText, message_history)
   UIManager:show(input_dialog)
 end
 
+local function resumeSession(ui, session)
+  local message_history = session.message_history
+  local highlightedText = session.highlighted_text or ""
+
+  local function buildStreamingResultTextForResume(partial_content)
+    local result_text = _("Highlighted text: ") .. "\"" .. highlightedText .. "\"\n\n"
+    for i = 3, #message_history do
+      if message_history[i].role == "user" then
+        result_text = result_text .. _("User: ") .. message_history[i].content .. "\n\n"
+      else
+        result_text = result_text .. _("ChatGPT: ") .. message_history[i].content .. "\n\n"
+      end
+    end
+    result_text = result_text .. _("ChatGPT: ") .. partial_content .. "\n\n"
+    return result_text
+  end
+
+  local function handleNewQuestion(chatgpt_viewer, question)
+    table.insert(message_history, {
+      role = "user",
+      content = question
+    })
+
+    if isStreamingEnabled() then
+      chatgpt_viewer:update(buildStreamingResultTextForResume(_("Generating...") .. " ▌"))
+
+      local streamState = queryChatGPTStreamAsync(message_history, {},
+        function(partial_content)
+          chatgpt_viewer:update(buildStreamingResultTextForResume(partial_content .. " ▌"))
+        end,
+        function(final_content, err)
+          if err then
+            chatgpt_viewer:update(buildStreamingResultTextForResume(_("Error: ") .. tostring(err)))
+            return
+          end
+          table.insert(message_history, {
+            role = "assistant",
+            content = final_content
+          })
+          session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+          ChatHistory.save(session)
+          chatgpt_viewer:update(createResultText(highlightedText, message_history))
+        end
+      )
+
+      if streamState then
+        local function doPoll()
+          if streamState.poll() then
+            UIManager:scheduleIn(0.1, doPoll)
+          end
+        end
+        UIManager:scheduleIn(0.1, doPoll)
+      end
+    else
+      local answer = queryChatGPT(message_history)
+
+      table.insert(message_history, {
+        role = "assistant",
+        content = answer
+      })
+
+      session.title = session.title or ChatHistory.deriveTitle(message_history, highlightedText)
+      ChatHistory.save(session)
+      chatgpt_viewer:update(createResultText(highlightedText, message_history))
+    end
+  end
+
+  local result_text = createResultText(highlightedText, message_history)
+
+  local chatgpt_viewer = ChatGPTViewer:new {
+    title = session.title or _("AskGPT"),
+    text = result_text,
+    onAskQuestion = handleNewQuestion,
+    session = session,
+  }
+  UIManager:show(chatgpt_viewer)
+end
+
 return {
   showChatGPTDialog = showChatGPTDialog,
-  showCustomPromptResult = handleCustomButton
+  showCustomPromptResult = handleCustomButton,
+  resumeSession = resumeSession,
 }
